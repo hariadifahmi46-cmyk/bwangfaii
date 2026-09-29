@@ -73,6 +73,24 @@ h1{margin:0 0 22px;font-size:clamp(30px,8vw,44px);text-shadow:0 0 24px #ff477e}
 }
 </style>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+.comments-section{margin-top:22px;text-align:left;padding:18px;border-radius:20px;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.14)}
+.comments-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}.comments-head h2{margin:0;font-size:20px}.comments-head span{font-size:12px;color:#cfcfd8}
+.login-box{text-align:center;padding:10px}.login-box p{margin:0 0 12px;color:#ddd;font-size:13px}
+.google-btn{width:100%;border:1px solid #ddd;border-radius:13px;background:#fff;color:#222;padding:12px;font-weight:700;cursor:pointer}
+.user-box{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;background:rgba(255,255,255,.06);border-radius:13px}
+.user-info{display:flex;align-items:center;gap:10px;min-width:0}.user-info img{width:40px;height:40px;border-radius:50%;object-fit:cover;background:#333}.user-info strong,.user-info small{display:block}.user-info small{font-size:11px;color:#aaa}
+.logout-btn{border:0;border-radius:10px;padding:8px 10px;background:rgba(255,255,255,.12);color:#fff;cursor:pointer}
+.comment-form{margin-top:12px}.comment-form textarea{width:100%;min-height:82px;resize:vertical;border:1px solid rgba(255,255,255,.15);border-radius:13px;padding:12px;background:rgba(0,0,0,.28);color:#fff;font-family:inherit}
+.comment-actions{display:flex;justify-content:space-between;align-items:center;margin-top:8px}.comment-actions small{color:#999}
+.send-btn{border:0;border-radius:11px;padding:10px 18px;background:#ff3d70;color:#fff;font-weight:700;cursor:pointer}
+.comment-message{font-size:12px;margin-top:9px;color:#ffd0dc;min-height:16px}.comments-list{display:grid;gap:9px;margin-top:13px}
+.comment-item{padding:11px;border-radius:13px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.08)}
+.comment-top{display:flex;align-items:center;gap:8px}.comment-top img{width:30px;height:30px;border-radius:50%;object-fit:cover}.comment-top strong{font-size:13px}.comment-date{font-size:10px;color:#888;margin-left:auto}
+.comment-text{margin:8px 0 0;font-size:13px;line-height:1.45;color:#eee;white-space:pre-wrap;word-break:break-word}.empty-comments{text-align:center;color:#888;font-size:12px;padding:10px}
+</style>
 </head>
 <body>
 <main class="card">
@@ -96,6 +114,25 @@ h1{margin:0 0 22px;font-size:clamp(30px,8vw,44px);text-shadow:0 0 24px #ff477e}
       </button>
     </div>
   </section>
+
+
+<section class="comments-section">
+  <div class="comments-head"><h2>💬 Komentar</h2><span id="commentCount">0 komentar</span></div>
+  <div id="loginBox" class="login-box">
+    <p>Login dengan Google untuk ikut berkomentar.</p>
+    <button id="googleLogin" class="google-btn">G &nbsp; Login dengan Google</button>
+  </div>
+  <div id="userBox" class="user-box" style="display:none">
+    <div class="user-info"><img id="userAvatar" src="" alt=""><div><strong id="userName">User</strong><small id="userEmail"></small></div></div>
+    <button id="logoutBtn" class="logout-btn">Keluar</button>
+  </div>
+  <div id="commentForm" class="comment-form" style="display:none">
+    <textarea id="commentText" maxlength="500" placeholder="Tulis komentar..."></textarea>
+    <div class="comment-actions"><small id="charCount">0/500</small><button id="sendComment" class="send-btn">Kirim</button></div>
+  </div>
+  <div id="commentMessage" class="comment-message"></div>
+  <div id="commentsList" class="comments-list"><div class="empty-comments">Belum ada komentar.</div></div>
+</section>
 
   <p class="thanks">TERIMAKASIH SUDAH VIP BARENG BWANGFAII</p>
 </main>
@@ -122,6 +159,46 @@ function closeOutside(e){
   if(e.target.id === 'qrModal') closeQR();
 }
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeQR()});
+</script>
+
+<script>
+const SUPABASE_URL = "YOUR_SUPABASE_URL";
+const SUPABASE_PUBLISHABLE_KEY = "YOUR_SUPABASE_PUBLISHABLE_KEY";
+let sb=null, currentUser=null;
+const $=id=>document.getElementById(id);
+function showLogin(){ $("loginBox").style.display="block"; $("userBox").style.display="none"; $("commentForm").style.display="none"; }
+function showUser(u){
+  $("loginBox").style.display="none"; $("userBox").style.display="flex"; $("commentForm").style.display="block";
+  const m=u.user_metadata||{}; $("userName").textContent=m.full_name||m.name||u.email||"User"; $("userEmail").textContent=u.email||"";
+  $("userAvatar").src=m.avatar_url||m.picture||"";
+}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));}
+async function loadComments(){
+  if(!sb)return;
+  const {data,error}=await sb.from("comments").select("id,name,avatar_url,content,created_at").order("created_at",{ascending:false}).limit(100);
+  if(error){$("commentsList").innerHTML='<div class="empty-comments">Komentar belum dikonfigurasi.</div>';return;}
+  $("commentCount").textContent=data.length+" komentar";
+  $("commentsList").innerHTML=data.length?data.map(c=>`<div class="comment-item"><div class="comment-top"><img src="${esc(c.avatar_url||"")}" alt=""><strong>${esc(c.name)}</strong><span class="comment-date">${new Date(c.created_at).toLocaleString("id-ID")}</span></div><div class="comment-text">${esc(c.content)}</div></div>`).join(""):'<div class="empty-comments">Belum ada komentar.</div>';
+}
+async function init(){
+  if(SUPABASE_URL.includes("YOUR_")||SUPABASE_PUBLISHABLE_KEY.includes("YOUR_")){showLogin();$("commentCount").textContent="Belum aktif";return;}
+  sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
+  const {data}=await sb.auth.getSession(); currentUser=data.session?.user||null; currentUser?showUser(currentUser):showLogin(); await loadComments();
+  sb.auth.onAuthStateChange((_e,s)=>{currentUser=s?.user||null;currentUser?showUser(currentUser):showLogin();});
+}
+$("googleLogin").onclick=async()=>{if(!sb){$("commentMessage").textContent="Supabase belum dikonfigurasi.";return;} const {error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.origin+location.pathname}});if(error)$("commentMessage").textContent=error.message;};
+$("logoutBtn").onclick=async()=>{if(sb)await sb.auth.signOut();};
+$("commentText").oninput=()=>{$("charCount").textContent=$("commentText").value.length+"/500";};
+$("sendComment").onclick=async()=>{
+  if(!sb||!currentUser){$("commentMessage").textContent="Silakan login dengan Google terlebih dahulu.";return;}
+  const content=$("commentText").value.trim(); if(!content){$("commentMessage").textContent="Komentar tidak boleh kosong.";return;}
+  const m=currentUser.user_metadata||{}; $("sendComment").disabled=true;
+  const {error}=await sb.from("comments").insert({user_id:currentUser.id,name:m.full_name||m.name||currentUser.email||"User",avatar_url:m.avatar_url||m.picture||"",content});
+  $("sendComment").disabled=false;
+  if(error){$("commentMessage").textContent="Komentar gagal dikirim. Cek konfigurasi Supabase.";return;}
+  $("commentText").value="";$("charCount").textContent="0/500";$("commentMessage").textContent="Komentar berhasil dikirim.";await loadComments();
+};
+init();
 </script>
 </body>
 </html>
